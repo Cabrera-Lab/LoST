@@ -1,0 +1,354 @@
+---
+title: "Bias_correction_LoST"
+output: html_document
+---
+# Setup
+```{r}
+install.packages("LoST_1.0.0.tar.gz", repos = NULL, type = "source")
+library(LoST)
+library(dplyr) 
+library(tidyr)
+library(ggplot2)
+```
+
+#Generate simulated images for modeling
+
+## Generate simulated phage images for modeling the function of emphirical method for fixed spot size in one image
+```{r}
+#get the current filepath
+mainDir = getwd()
+#create a subfolder to save simulated images for model estimation
+dir.create(file.path(mainDir, "model_images/"))
+```
+
+```{r}
+#simulate phage images and save for model estimation
+#replicate number for each fixed spot size and count
+rep_num = 10
+#different spot count to be modeled
+ct_model = c(10,20,30,50,70,100,120,150,200,250,300)
+#different spot diameter to be modeled
+sz_model = c(20,30,40,50,60)
+for (i in sz_model) {
+  #create sub-folders for different spot size
+  dir.create(paste(mainDir,"/model_images/model_images_",i,sep = ""))
+  print(paste("Generating images with spot diameter",i))
+  for (j in ct_model) {
+    print(paste("Generating images with spot diameter",i, "and with spot count",j))
+    for (k in 1:rep_num) {
+    img0 <- PhageImage_gen(s0 = j, d2o = i,seed0 = k+100) 
+    writeImage(img0,paste(mainDir,"/model_images/model_images_",i,"/model_ct",j,"_sz",i,"_rep",k,".jpg",sep = ""))
+    }
+  }
+}
+```
+
+## Obtain observed count and estimated spot size for each image and save results of images for modeling
+```{r}
+#for each sub-folder in the folder model_images, use LoST to obtain spot count and size, and combine the results
+res_model = as.data.frame(NULL)
+for (i in sz_model) {
+    print(paste("Count images with spot diameter",i))
+    # get a fake meta file about dilution information for LoST function
+    info = fread(system.file("extdata", "metafile_example.csv",package="LoST"))
+    names = list.files(paste(mainDir,"/model_images/model_images_",i,sep = ""))
+    info <- do.call("rbind", replicate(length(names), info[1,], simplify = FALSE)) 
+    info$image_name = names
+    write.csv(info,paste(mainDir,"/model_images/info_model_",i,".csv",sep = ""))
+    
+    # use LoST function to obtain count and estimated spot size
+    res0_model = LoST(paste(mainDir,"/model_images/model_images_",i,sep = ""),meta.file = paste(file.path(mainDir),"/model_images/info_model_",i,".csv",sep = ""),use_dilute = F, dilute.model = F)
+    obs_count = as.numeric(res0_model@count)
+    obs_size = unlist(lapply(res0_model@clus_size, function(t){median(sqrt(unlist(t)/pi)*2)}))
+    true_count = as.numeric(gsub('[^[:alnum:] ]', '', substr(names,start = 9,stop = 11)))
+    true_size = as.numeric(gsub('[^[:digit:] ]', '', substr(names,start = 14,stop = 16)))
+
+    res_model = rbind(res_model, cbind(obs_count,obs_size,true_count,true_size))
+    colnames(res_model) = c("obs_count","obs_size","true_count","true_size")
+    
+    #save the results for modeling
+    write.csv(res_model,paste(mainDir,"/model_images/result_model.csv",sep = ""))
+}
+```
+
+
+#Generate simulated images for testing
+
+## Generate simulated phage images for model testing: fixed size
+```{r}
+#create a subfolder to save simulated images for model test
+dir.create(file.path(mainDir, "test_images/"))
+```
+
+```{r}
+#simulate phage images and save for model test
+#replicate number for each fixed spot size and count
+rep_num = 5
+#different spot count to be tested
+ct_test = c(10, 20, 30, 40, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100,  105, 110, 115, 120, 130, 140, 150, 175, 200, 225, 250, 275, 300)
+#different spot diameter to be tested
+sz_test = seq(20,40,5)
+for (i in sz_test) {
+  dir.create(paste(mainDir,"/test_images/test_images_",i,sep = ""))
+  print(paste("Generating images with spot diameter",i))
+  for (j in ct_test) {
+    print(paste("Generating images with spot diameter",i, "and with spot count",j))
+    for (k in 1:rep_num) {
+    img0 <- PhageImage_gen(s0 = j, d2o = i,seed0 = k) 
+    writeImage(img0,paste(mainDir,"/test_images/test_images_",i,"/test_ct",j,"_sz",i,"_rep",k,".jpg",sep = ""))
+    }
+  }
+}
+```
+
+## Obtain observed count and estimated spot size for each image and save results of images for testing
+```{r}
+#for each sub-folder in the folder model_images, use LoST to obtain spot count and size, and combine the results
+for (i in sz_test) {
+    print(paste("Count images with spot diameter",i))
+    # get a fake meta file about dilution information for LoST function
+    info = fread(system.file("extdata", "metafile_example.csv",package="LoST"))
+    names = list.files(paste(mainDir,"/test_images/test_images_",i,sep = ""))
+    info <- do.call("rbind", replicate(length(names), info[1,], simplify = FALSE)) 
+    info$image_name = names
+    write.csv(info,paste(mainDir,"/test_images/info_test_",i,".csv",sep = ""))
+    
+    # use LoST function to obtain count and estimated spot size
+    res0_model = LoST(paste(mainDir,"/test_images/test_images_",i,sep = ""),meta.file = paste(file.path(mainDir),"/test_images/info_test_",i,".csv",sep = ""),use_dilute = F, dilute.model = F)
+    obs_count = as.numeric(res0_model@count)
+    obs_size = unlist(lapply(res0_model@clus_size, function(t){median(sqrt(unlist(t)/pi)*2)}))
+    true_count = as.numeric(gsub('[^[:alnum:] ]', '', substr(names,start = 8,stop = 10)))
+    true_size = as.numeric(gsub('[^[:digit:] ]', '', substr(names,start = 13,stop = 15)))
+
+    res_test = cbind(obs_count,obs_size,true_count,true_size)
+    colnames(res_test) = c("obs_count","obs_size","true_count","true_size")
+    
+    #save the results for test
+    write.csv(res_test,paste(mainDir,"/test_images/result_test_sz",i,".csv",sep = ""))
+}
+```
+
+## Generate simulated phage images for model testing: random size and random count
+```{r}
+#create a subfolder to save simulated images for model test
+dir.create(file.path(mainDir, "test_images_random/"))
+```
+
+```{r}
+#simulate phage images and save for model test
+
+dir.create(paste(mainDir,"/test_images_random/test_images",sep = ""))
+#number of test images with random size and random count
+num = 100
+
+for (i in 1:num) {
+  print(paste("Generating random images index",i))
+  
+  #random count and random size sampled from uniform distribution
+  ct_random = round(runif(1,min = 10,max = 200))
+  sz_random = round(runif(1,min = 15,max = 40))
+  print(paste("image with spot diameter",sz_random, "and with spot count",ct_random))
+     
+  #generate image
+  img0 <- PhageImage_gen(s0 = ct_random, d2o = sz_random,seed0 = k) 
+  writeImage(img0,paste(mainDir,"/test_images_random/test_images/test_ct",ct_random,"_sz",sz_random,".jpg",sep = ""))
+}
+```
+
+## Obtain observed count and estimated spot size for each image and save results of images for testing
+```{r}
+# get a fake meta file about dilution information for LoST function
+info = fread(system.file("extdata", "metafile_example.csv",package="LoST"))
+names = list.files(paste(mainDir,"/test_images_random/test_images",sep = ""))
+info <- do.call("rbind", replicate(length(names), info[1,], simplify = FALSE)) 
+info$image_name = names
+write.csv(info,paste(mainDir,"/test_images_random/info_test_random.csv",sep = ""))
+
+# use LoST function to obtain count and estimated spot size
+res0_model = LoST(paste(mainDir,"/test_images_random/test_images",sep = ""),meta.file = paste(mainDir,"/test_images_random/info_test_random.csv",sep = ""),use_dilute = F, dilute.model = F)
+obs_count = as.numeric(res0_model@count)
+obs_size = unlist(lapply(res0_model@clus_size, function(t){median(sqrt(unlist(t)/pi)*2)}))
+true_count = as.numeric(gsub('[^[:alnum:] ]', '', substr(names,start = 8,stop = 10)))
+true_size = as.numeric(gsub('[^[:digit:] ]', '', substr(names,start = 13,stop = 15)))
+
+res_test = cbind(obs_count,obs_size,true_count,true_size)
+colnames(res_test) = c("obs_count","obs_size","true_count","true_size")
+
+#save the results for test
+write.csv(res_test,paste(mainDir,"/test_images_random/result_test_random.csv",sep = ""))
+
+```
+
+
+#Modeling for empirical method
+
+## prepare the training data frame
+```{r}
+res_model = read.csv(paste(mainDir,"/model_images/result_model.csv",sep = ""))[,2:5]
+res_model = na.omit(res_model)
+```
+
+## fit thin plate spline
+```{r}
+library(fields)
+fit <- Tps(x = data.frame(res_model$obs_count,res_model$obs_size),Y = res_model$true_count)
+```
+
+
+#Modeling for theoretical method
+```{r}
+circdprob = function(d,r){
+  2*asin(d/(2*r))/pi+2*d^2*acos(d/(2*r))/(pi*r^2)-(d*(2*r^2+d^2)*sqrt(4-d^2/r^2))/(4*pi*r^3)
+}
+
+est_N <- function(x1,spot_dia,well_dia=400){
+  c = (30*spot_dia+2*well_dia-500)/100
+  p = circdprob(d = c,well_dia/2)
+  uniroot(\(N,p,x) N-N*(N-1)/2*p+N*(N-1)*(N-2)/6*p^2-x, c(0, x1*1.5), p = p, x = x1,extendInt = "yes")$root
+}
+```
+
+
+#Test on images with random count and random size
+
+##conduct bias correction based on two methods
+```{r,echo=FALSE}
+  #read test image count results by LoST
+  res_test = read.csv(paste(mainDir,"/test_images_random/result_test_random.csv",sep = ""))[,-1]
+  res_test = na.omit(res_test)
+  #original bias before correction
+  res_test$ori_bias = res_test$obs_count - res_test$true_count
+  
+  #corrected count and bias by empirical method
+  res_test$empirical_correct_count <- round(predict(fit, x = data.frame(res_test$obs_count,res_test$obs_size))[,1])
+  res_test$empirical_bias = res_test$empirical_correct_count - res_test$true_count
+
+  #corrected count and bias by theoretical method
+  res_test$theo_correct_count = apply(cbind(res_test$obs_count,res_test$obs_size),1,function(t){est_N(t[1],t[2],well_dia = 395)})
+  res_test$theo_correct_count = round(res_test$theo_correct_count)
+  res_test$theo_bias = res_test$theo_correct_count - res_test$true_count
+  res_test = res_test[order(res_test$true_count),]
+```
+
+##plot bias correction results
+```{r}  
+  #line plot for bias 
+  plot(res_test$true_count, res_test$theo_bias,ylim=c(range(res_test$ori_bias,res_test$theo_bias,res_test$empirical_bias)),xlab="number of spot (true count)",ylab="bias",col=2,type="b",main="random spot size and random count number",xlim=rev(range(res_test$true_count)))
+points(res_test$true_count,res_test$ori_bias,col=1,type="b",xlim=rev(res_test$true_count))
+points(res_test$true_count,res_test$empirical_bias,col=3,type="b",xlim=rev(res_test$true_count))
+legend("bottomright",legend = c("bias before correction","bias after theoretical correction","bias after empirical correction"),col=c(1,2,3),pch=1,cex=0.8)
+abline(h=0,lty=2)
+  
+
+  #box plot for bias
+  df_long <- res_test[,c("ori_bias","theo_bias","empirical_bias")] %>% 
+  gather(bias_type, bias_val, c("ori_bias","theo_bias","empirical_bias"))
+  df_long$bias_type = factor(df_long$bias_type)
+  df_long$bias_type = relevel(df_long$bias_type,ref = "ori_bias")
+
+  p <- ggplot(data=df_long) + 
+  geom_hline(yintercept = 0,lty=2)+
+  geom_boxplot( aes(x=bias_type, y=bias_val), position=position_dodge(1)) +
+  scale_x_discrete(breaks=c("ori_bias","theo_bias","empirical_bias"), labels=c("bias before\n correction", "bias after theoretical \ncorrection","bias after empirical \ncorrection")) +
+  theme_minimal() +
+  # scale_y_continuous(limits = c(-6,6)) +
+  ggtitle("random spot diameter and count")
+  print(p)
+```
+## ggplot with smooth line
+```{r}
+ggplot(res_test, aes(x = true_count)) +
+  geom_point(aes(y = theo_bias, color = "bias after theoretical correction")) +
+  geom_point(aes(y = ori_bias, color = "bias before correction")) +
+  geom_point(aes(y = empirical_bias, color = "bias after empirical correction")) +
+  geom_smooth(aes(y = theo_bias, color = "bias after theoretical correction"), method = "loess") +
+  geom_smooth(aes(y = ori_bias, color = "bias before correction"), method = "loess") +
+  geom_smooth(aes(y = empirical_bias, color = "bias after empirical correction"), method = "loess") +
+  scale_x_reverse() +
+  scale_y_continuous(limits = c(min(res_test$ori_bias, res_test$theo_bias, res_test$empirical_bias),
+                                 max(res_test$ori_bias, res_test$theo_bias, res_test$empirical_bias))) +
+  labs(x = "number of spot (true count)", y = "bias",color = "",title = "Random spot size and count number") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = c("bias before correction" = "black", "bias after theoretical correction" = "blue", "bias after empirical correction" = "red"))
+
+```
+
+
+
+#Test on images with fixed count and fixed size
+```{r,echo=FALSE}
+for (i in sz_test){
+  #conduct bias correction based on two methods
+  print(paste("Bias correct for spot size",i))
+  #read test image count results by LoST
+  res_test = read.csv(paste(mainDir,"/test_images/result_test_sz",i,".csv",sep = ""))[,-1]
+  res_test = na.omit(res_test)
+  if(i == 40){res_test = res_test[res_test$true_count<=200,]}
+  if(i == 35){res_test = res_test[res_test$true_count<=250,]}
+
+  #original bias before correction
+  res_test$ori_bias = res_test$obs_count - res_test$true_count
+  
+  #corrected count and bias by empirical method
+  res_test$empirical_correct_count <- round(predict(fit, x = data.frame(res_test$obs_count,res_test$obs_size))[,1])
+  res_test$empirical_bias = res_test$empirical_correct_count - res_test$true_count
+
+  #corrected count and bias by theoretical method
+  res_test$theo_correct_count = apply(cbind(res_test$obs_count,res_test$obs_size),1,function(t){est_N(t[1],t[2],well_dia = 395)})
+  res_test$theo_correct_count = round(res_test$theo_correct_count)
+  res_test$theo_bias = res_test$theo_correct_count - res_test$true_count
+  res_test = res_test[order(res_test$true_count),]
+  
+  #calculate mean values of bias for each number of true_count
+  res_combine_test = data.frame(NULL)
+  for (j in unique(res_test$true_count)) {
+    res_combine_test = rbind(res_combine_test, c(j,mean(res_test[res_test$true_count==j,]$ori_bias), mean(res_test[res_test$true_count==j,]$empirical_bias),mean(res_test[res_test$true_count==j,]$theo_bias)))
+  }
+  colnames(res_combine_test) = c("true_count","ori_bias","empirical_bias","theo_bias")
+  
+  #plot bias correction results
+
+  #line plot for bias 
+  plot(res_combine_test$true_count, res_combine_test$theo_bias,ylim=c(range(res_combine_test$ori_bias,res_combine_test$theo_bias,res_combine_test$empirical_bias)),type="b",xlab="number of spot (true count)",ylab="bias",col=2,main=paste0("spot diameter: ",i),xlim=rev(range(res_combine_test$true_count)))
+points(res_combine_test$true_count,res_combine_test$ori_bias,col=1,type="b",xlim=rev(res_combine_test$true_count))
+points(res_combine_test$true_count,res_combine_test$empirical_bias,col=3,type="b",xlim=rev(res_combine_test$true_count))
+legend("bottomright",legend = c("bias before correction","bias after theoretical correction","bias after empirical correction"),col=c(1,2,3),lty=1,pch=1,cex=0.8)
+abline(h=0,lty=2)
+  
+  p <- ggplot(res_combine_test, aes(x = true_count)) +
+  geom_point(aes(y = theo_bias, color = "bias after theoretical correction")) +
+  geom_point(aes(y = ori_bias, color = "bias before correction")) +
+  geom_point(aes(y = empirical_bias, color = "bias after empirical correction")) +
+  geom_smooth(aes(y = theo_bias, color = "bias after theoretical correction"), method = "loess") +
+  geom_smooth(aes(y = ori_bias, color = "bias before correction"), method = "loess") +
+  geom_smooth(aes(y = empirical_bias, color = "bias after empirical correction"), method = "loess") +
+  scale_x_reverse() +
+  scale_y_continuous(limits = c(min(res_combine_test$ori_bias, res_combine_test$theo_bias, res_combine_test$empirical_bias),
+                                 max(res_combine_test$ori_bias, res_combine_test$theo_bias, res_combine_test$empirical_bias))) +
+  labs(x = "number of spot (true count)", y = "bias",color = "",title = paste0("spot diameter: ",i)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = c("bias before correction" = "black", "bias after theoretical correction" = "blue", "bias after empirical correction" = "red"))
+   print(p)
+  
+   
+   
+   # #box plot for bias
+  # df_long <- res_combine_test[,c("ori_bias","theo_bias","empirical_bias")] %>% 
+  # gather(bias_type, bias_val, c("ori_bias","theo_bias","empirical_bias"))
+  # df_long$bias_type = factor(df_long$bias_type)
+  # df_long$bias_type = relevel(df_long$bias_type,ref = "ori_bias")
+  # 
+  # p <- ggplot(data=df_long) + 
+  # geom_hline(yintercept = 0,lty=2)+
+  # geom_boxplot( aes(x=bias_type, y=bias_val), position=position_dodge(1)) +
+  # scale_x_discrete(breaks=c("ori_bias","theo_bias","empirical_bias"), labels=c("bias before\n correction", "bias after theoretical \ncorrection","bias after empirical \ncorrection")) +
+  # theme_minimal() +
+  # # scale_y_continuous(limits = c(-6,6)) +
+  # ggtitle(paste0("spot diameter: ",i))
+  # print(p)
+}
+```
